@@ -5,19 +5,19 @@ Parameters:
   KeyName:
     Description: 'Key Pair name'
     Type: 'AWS::EC2::KeyPair::KeyName'
-    Default: Ireland
+    Default: mykey
   JenkinsAdminPassword:
     Description: 'Password for Jenkins admin user'
     Type: String
-    AllowedPattern: '[a-zA-Z0-9\.]*'
+    AllowedPattern: '[a-zA-Z0-9]*'
     MinLength: 8
     MaxLength: 42
 Mappings:
   RegionMap:
-    'eu-west-1':
-      AMI: 'ami-0d712b3e6e1f798ef'
     'eu-central-1':
       AMI: 'ami-013fffc873b1eaa1c'
+    'eu-west-1':
+      AMI: 'ami-0d712b3e6e1f798ef'
 Resources:
   ##########################################################################
   #                                                                        #
@@ -140,47 +140,53 @@ Resources:
       - !Ref SecurityGroup
       UserData:
         'Fn::Base64': !Sub |
-          !/bin/bash -x
-          yum update -y
+          #!/bin/bash -x
+          bash -ex << "TRY"
+            # create log directory
+            logdir=/var/mylogs
+            logfile=jenkins_log.txt
+            mkdir -p $logdir
+            echo [`date`]01 Start userdata script in `pwd` ... > $logdir/$logfile
+            chown -R ec2-user $logdir
 
-          # create log directory
-          logdir=/var/mylogs
-          logfile=jenkins_log.txt
-          mkdir -p $logdir
-          echo [`date`]Start userdata script ... >> $logdir/$logfile
-          chown -R ec2-user $logdir
+            # install Jenkins
+            echo [`date`]02 >> $logdir/$logfile
+            wget -O /etc/yum.repos.d/jenkins.repo \
+              https://pkg.jenkins.io/redhat-stable/jenkins.repo
+            echo [`date`]03 >> $logdir/$logfile
+            rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+            echo [`date`]04 >> $logdir/$logfile
+            yum upgrade
+            echo [`date`]05 >> $logdir/$logfile
+            yum install -y jenkins java-1.8.0-openjdk-devel
+            echo [`date`]06 >> $logdir/$logfile
 
-          wget -O /etc/yum.repos.d/jenkins.repo \
-            https://pkg.jenkins.io/redhat-stable/jenkins.repo
-          rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io.key
-          yum upgrade
-          yum install -y jenkins java-1.8.0-openjdk-devel
+            # configure Jenkins
+            echo [`date`]07 >> $logdir/$logfile
+            sed -i -e 's/JENKINS_ARGS=""/JENKINS_ARGS="--argumentsRealm.passwd.admin=${JenkinsAdminPassword} --argumentsRealm.roles.admin=admin"/g' /etc/sysconfig/jenkins
+            echo [`date`]08 >> $logdir/$logfile
+            if [ ! -f /var/lib/jenkins/config.xml ]; then
+              echo [`date`]09 >> $logdir/$logfile
+              echo '<?xml version="1.0" encoding="UTF-8"?><hudson><version>1.0</version><useSecurity>true</useSecurity><authorizationStrategy class="hudson.security.FullControlOnceLoggedInAuthorizationStrategy"/><securityRealm class="hudson.security.LegacySecurityRealm"/></hudson>' > /var/lib/jenkins/config.xml
+              echo [`date`]10 >> $logdir/$logfile
+              chown jenkins:jenkins /var/lib/jenkins/config.xml
+              echo [`date`]11 >> $logdir/$logfile
+            fi
 
-          sed -i -e 's/JENKINS_ARGS=""/JENKINS_ARGS="--argumentsRealm.passwd.admin=${JenkinsAdminPassword} --argumentsRealm.roles.admin=admin"/g' /etc/sysconfig/jenkins
-          if [ ! -f /var/lib/jenkins/config.xml ]; then
-            echo '<?xml version="1.0" encoding="UTF-8"?><hudson><version>1.0</version><useSecurity>true</useSecurity><authorizationStrategy class="hudson.security.FullControlOnceLoggedInAuthorizationStrategy"/><securityRealm class="hudson.security.LegacySecurityRealm"/></hudson>' > /var/lib/jenkins/config.xml
-            jenkins:jenkins /var/lib/jenkins/config.xml
-          fi
+            # start jenkins
+            echo [`date`]12 >> $logdir/$logfile
+            systemctl daemon-reload
+            echo [`date`]13 >> $logdir/$logfile
+            systemctl start jenkins
+            echo [`date`]14 Jenkins status: `systemctl status jenkins | grep active` >> $logdir/$logfile
+            echo [`date`]15 >> $logdir/$logfile
+          TRY
+          echo [`date`]16 >> $logdir/$logfile
+          #/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+          echo [`date`]17 >> $logdir/$logfile
 
-          systemctl daemon-reload
-          systemctl start jenkins
-          systemctl status jenkins >> $logdir/$logfile
-          echo "... userdata script finished." >> $logdir/$logfile
-
-          # Old way:
-          #   # install Jenkins
-          #   wget -q -T 60 https://pkg.jenkins.io/redhat/jenkins-1.616-1.1.noarch.rpm
-          #   rpm --install jenkins-1.616-1.1.noarch.rpm
-          #   # configure Jenkins
-          #   sed -i -e 's/JENKINS_ARGS=""/JENKINS_ARGS="--argumentsRealm.passwd.admin=${JenkinsAdminPassword} --argumentsRealm.roles.admin=admin"/g' /etc/sysconfig/jenkins
-          #   if [ ! -f /var/lib/jenkins/config.xml ]; then
-          #     echo '<?xml version="1.0" encoding="UTF-8"?><hudson><version>1.0</version><useSecurity>true</useSecurity><authorizationStrategy class="hudson.security.FullControlOnceLoggedInAuthorizationStrategy"/><securityRealm class="hudson.security.LegacySecurityRealm"/></hudson>' > /var/lib/jenkins/config.xml
-          #     chown jenkins:jenkins /var/lib/jenkins/config.xml
-          #   fi
-          #   # start jenkins
-          #   service jenkins start
-          
-          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+          # log end of script
+          echo [`date`]18 ... userdata script finished successfully >> $logdir/$logfile
   AutoScalingGroup:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
     Properties:
