@@ -181,12 +181,7 @@ Resources:
             echo [`date`]14 Jenkins status: `systemctl status jenkins | grep active` >> $logdir/$logfile
             echo [`date`]15 >> $logdir/$logfile
           TRY
-          echo [`date`]16 >> $logdir/$logfile
-          #/opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
-          echo [`date`]17 >> $logdir/$logfile
-
-          # log end of script
-          echo [`date`]18 ... userdata script finished successfully >> $logdir/$logfile
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
   AutoScalingGroup:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
     Properties:
